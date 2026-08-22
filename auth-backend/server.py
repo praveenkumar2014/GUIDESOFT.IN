@@ -34,6 +34,45 @@ class TokenResponse(BaseModel):
 
 app = FastAPI(title='Auth API')
 
+# Mount API routers by file path to avoid package-name issues
+from importlib.util import spec_from_file_location, module_from_spec
+from pathlib import Path
+
+
+def _load_router_from_file(path: Path, attr: str = 'router'):
+    """Load a module from a file path and return a router attribute if present."""
+    if not path.exists():
+        return None
+    spec = spec_from_file_location(path.stem, str(path))
+    if spec is None or spec.loader is None:
+        return None
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return getattr(module, attr, None)
+
+base = Path(__file__).parent
+
+users_router = _load_router_from_file(base / 'api' / 'users.py')
+if users_router is not None:
+    app.include_router(users_router, prefix='/api/users', tags=['users'])
+
+courses_router = _load_router_from_file(base / 'api' / 'courses.py')
+if courses_router is not None:
+    app.include_router(courses_router, prefix='/api/courses', tags=['courses'])
+
+payments_router = _load_router_from_file(base / 'api' / 'payments.py')
+if payments_router is not None:
+    app.include_router(payments_router, prefix='/api/payments', tags=['payments'])
+
+orders_router = _load_router_from_file(base / 'api' / 'orders.py')
+if orders_router is not None:
+    app.include_router(orders_router, prefix='/api/orders', tags=['orders'])
+
+cms_router = _load_router_from_file(base / 'api' / 'cms.py')
+if cms_router is not None:
+    app.include_router(cms_router, prefix='/api/cms', tags=['cms'])
+
+
 cors_origins = [
     origin.strip()
     for origin in os.getenv('CORS_ORIGINS', 'http://localhost:5174').split(',')
