@@ -381,6 +381,28 @@ function SiteHeader({
     }
   }, [exploreOpen])
 
+  useEffect(() => {
+    if (!menuOpen) return
+
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target as Node
+      const header = document.querySelector('.site-header')
+      if (header && !header.contains(target)) {
+        setMenuOpen(false)
+      }
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+
+    document.addEventListener('pointerdown', closeOnOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [menuOpen])
+
   const submitSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const query = searchQuery.trim()
