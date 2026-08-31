@@ -132,6 +132,33 @@ const homeCategories = courseCategories.slice(0, 8).map((category) => ({
   courseCount: courseCatalog.filter((course) => course.categoryId === category.id).length,
 }))
 
+const backendCoursesUrl = (import.meta.env.VITE_BACKEND_COURSE_URL as string | undefined) ?? 'http://localhost:8000/api/courses/'
+
+function normalizeCourseItem(value: Partial<CatalogCourse> & Record<string, unknown>): CatalogCourse | null {
+  if (!value || typeof value !== 'object') return null
+  const id = typeof value.id === 'string' ? value.id : ''
+  const title = typeof value.title === 'string' ? value.title : ''
+  const categoryId = typeof value.categoryId === 'string' ? value.categoryId : 'career--industry-programs'
+  const category = typeof value.category === 'string' ? value.category : 'Career & Industry Programs'
+  if (!id || !title) return null
+  return { id, title, categoryId, category, icon: typeof value.icon === 'string' ? value.icon : '📚' }
+}
+
+async function fetchDynamicCourses(): Promise<CatalogCourse[]> {
+  try {
+    const response = await fetch(backendCoursesUrl)
+    if (!response.ok) return courseCatalog
+    const payload = await response.json() as unknown
+    const entries = Array.isArray(payload) ? payload : Array.isArray((payload as { items?: unknown })?.items) ? (payload as { items: unknown[] }).items : []
+    const normalized = entries
+      .map((item) => normalizeCourseItem(item as Partial<CatalogCourse> & Record<string, unknown>))
+      .filter((item): item is CatalogCourse => Boolean(item))
+    return normalized.length ? normalized : courseCatalog
+  } catch {
+    return courseCatalog
+  }
+}
+
 const learningProgressKey = (courseId: string) => `learning_progress_${courseId}`
 
 function readLearningProgress(courseId: string): LearningProgress {
@@ -690,10 +717,24 @@ function CoursesPage({
 }) {
   const initialParams = new URLSearchParams(window.location.search)
   const catalogSearchRef = useRef<HTMLInputElement>(null)
+  const [catalogCourses, setCatalogCourses] = useState<CatalogCourse[]>(courseCatalog)
   const [query, setQuery] = useState(initialParams.get('q') ?? '')
   const [selectedCategory, setSelectedCategory] = useState(initialParams.get('category') ?? 'all')
   const [sortMode, setSortMode] = useState<'relevance' | 'az'>('relevance')
   const [visibleCount, setVisibleCount] = useState(12)
+
+  useEffect(() => {
+    let ignore = false
+    const loadCourses = async () => {
+      const nextCourses = await fetchDynamicCourses()
+      if (!ignore) setCatalogCourses(nextCourses)
+    }
+
+    void loadCourses()
+    return () => {
+      ignore = true
+    }
+  }, [])
 
   useEffect(() => {
     const focusSearch = (event: KeyboardEvent) => {
@@ -705,8 +746,36 @@ function CoursesPage({
     window.addEventListener('keydown', focusSearch)
     return () => window.removeEventListener('keydown', focusSearch)
   }, [])
+
+  const shareCourse = (course: CatalogCourse) => {
+    const shareText = `I’m exploring ${course.title} on GuideSoft. ${courseBlurb(course.categoryId)} #GuideSoft #${course.category.replace(/\s+/g, '')} #Learning`
+    const shareUrl = `${window.location.origin}/learn?course=${encodeURIComponent(course.id)}`
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(`${shareText} ${shareUrl}`)}`
+    const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}&quote=${encodeURIComponent(shareText)}`
+
+    const shareTargets = {
+      whatsapp: whatsappUrl,
+      facebook: facebookUrl,
+      instagram: whatsappUrl,
+    }
+
+    if (navigator.share) {
+      navigator.share({
+        title: course.title,
+        text: shareText,
+        url: shareUrl,
+      }).catch(() => {
+        const target = shareTargets.whatsapp
+        window.open(target, '_blank', 'noopener,noreferrer')
+      })
+      return
+    }
+
+    window.open(shareTargets.whatsapp, '_blank', 'noopener,noreferrer')
+  }
+
   const normalizedQuery = query.trim().toLowerCase()
-  const filteredCourses = courseCatalog.filter((course) => {
+  const filteredCourses = catalogCourses.filter((course) => {
     const matchesCategory = selectedCategory === 'all' || course.categoryId === selectedCategory
     const matchesQuery = !normalizedQuery || `${course.title} ${course.category}`.toLowerCase().includes(normalizedQuery)
     return matchesCategory && matchesQuery
@@ -752,8 +821,8 @@ function CoursesPage({
             <div className="catalog-sidebar-card">
               <div className="catalog-sidebar-heading"><p className="section-kicker"><span /> Browse by focus</p><span>{courseCategories.length}</span></div>
               <div className="catalog-category-list">
-                <button className={selectedCategory === 'all' ? 'is-selected' : ''} type="button" onClick={() => updateCategory('all')}><span><Icon name="layers" size={16} /> All courses</span><b>{catalogStats.totalCourses}</b></button>
-                {courseCategories.map((category) => <button className={selectedCategory === category.id ? 'is-selected' : ''} type="button" key={category.id} onClick={() => updateCategory(category.id)}><span><CourseIcon categoryId={category.id} size={16} /> {category.title}</span><b>{courseCatalog.filter((course) => course.categoryId === category.id).length}</b></button>)}
+                <button className={selectedCategory === 'all' ? 'is-selected' : ''} type="button" onClick={() => updateCategory('all')}><span><Icon name="layers" size={16} /> All courses</span><b>{catalogCourses.length}</b></button>
+                {courseCategories.map((category) => <button className={selectedCategory === category.id ? 'is-selected' : ''} type="button" key={category.id} onClick={() => updateCategory(category.id)}><span><CourseIcon categoryId={category.id} size={16} /> {category.title}</span><b>{catalogCourses.filter((course) => course.categoryId === category.id).length}</b></button>)}
               </div>
             </div>
             <div className="catalog-sidebar-callout"><span><Icon name="spark" size={17} /></span><strong>Have source material?</strong><p>Turn a transcript into a structured course brief in AI Studio.</p><button type="button" onClick={() => onNavigate('/studio')}>Open AI Studio <Icon name="arrow-up-right" size={14} /></button></div>
@@ -764,7 +833,7 @@ function CoursesPage({
               {visibleCourses.map((course, index) => (
                 <article className={`catalog-course-card catalog-course-card-${courseAccent(course)}`} key={course.id} data-reveal>
                   <PosterArt course={course} index={index + 1} accent={courseAccent(course)} compact />
-                  <div className="catalog-course-content"><div className="catalog-course-meta"><span><CourseIcon categoryId={course.categoryId} size={13} /> {course.category}</span><span>Online</span></div><h3>{course.title}</h3><p>{courseBlurb(course.categoryId)}</p><div className="catalog-course-footer"><span><Icon name="clock" size={14} /> Self-paced</span><span><Icon name="layers" size={14} /> 4-part path</span></div><button type="button" onClick={() => onNavigate(`/learn?course=${encodeURIComponent(course.id)}`)}>Open course <Icon name="arrow-up-right" size={15} /></button></div>
+                  <div className="catalog-course-content"><div className="catalog-course-meta"><span><CourseIcon categoryId={course.categoryId} size={13} /> {course.category}</span><span>Online</span></div><h3>{course.title}</h3><p>{courseBlurb(course.categoryId)}</p><div className="catalog-course-footer"><span><Icon name="clock" size={14} /> Self-paced</span><span><Icon name="layers" size={14} /> 4-part path</span></div><div className="catalog-course-actions"><button type="button" onClick={() => onNavigate(`/learn?course=${encodeURIComponent(course.id)}`)}>Open course <Icon name="arrow-up-right" size={15} /></button><button type="button" className="catalog-share-button" onClick={() => shareCourse(course)}>Share <Icon name="arrow-up-right" size={15} /></button></div></div>
                 </article>
               ))}
             </div>

@@ -846,13 +846,19 @@ textarea:focus-visible {
   gap: 5px;
 }
 
-.catalog-course-content > button {
+.catalog-course-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 15px;
+}
+
+.catalog-course-actions button {
   display: inline-flex;
-  width: 100%;
   min-height: 40px;
   align-items: center;
   justify-content: space-between;
-  margin-top: 15px;
+  gap: 8px;
   padding: 0 12px;
   color: var(--accent-dark);
   font: inherit;
@@ -865,10 +871,14 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
-.catalog-course-content > button:hover {
+.catalog-course-actions button:hover {
   color: #fff;
   background: var(--accent-dark);
   border-color: var(--accent-dark);
+}
+
+.catalog-share-button {
+  min-width: 102px;
 }
 
 .load-more-button {
